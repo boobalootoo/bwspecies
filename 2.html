@@ -24,26 +24,37 @@
             attribution: 'Tiles &copy; Esri'
         }).addTo(map);
 
-        // Robust Grid Parser
+        // Geolocation with Heading
+        let userMarker = null;
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition((pos) => {
+                const { latitude, longitude, heading } = pos.coords;
+                if (!userMarker) {
+                    userMarker = L.marker([latitude, longitude], {
+                        icon: L.divIcon({
+                            html: `<div style="transform: rotate(${heading || 0}deg); font-size: 20px;">➤</div>`,
+                            className: 'user-arrow'
+                        })
+                    }).addTo(map);
+                } else {
+                    userMarker.setLatLng([latitude, longitude]);
+                    userMarker.setIcon(L.divIcon({
+                        html: `<div style="transform: rotate(${heading || 0}deg); font-size: 20px;">➤</div>`,
+                        className: 'user-arrow'
+                    }));
+                }
+            }, null, { enableHighAccuracy: true });
+        }
+
         const stToWgs84 = (gridStr) => {
-            let ref = gridStr.replace(/[^*A-Z0-9]/g, '');
-            if (!ref.startsWith('ST')) return null;
-            ref = ref.substring(2);
-
+            const clean = gridStr.replace(/[^*A-Z0-9]/g, '');
+            if (!clean.startsWith('ST')) return null;
+            const ref = clean.substring(2);
             let x = 0, y = 0;
-            // Handle Tetrads (e.g., ST57X)
-            if (ref.length === 3 && /[A-Z]/.test(ref[2])) {
-                const base = ref.substring(0, 2);
-                x = parseInt(base[0]) * 10; y = parseInt(base[1]) * 10;
-                const idx = "ABCDEFGHIJKLMNPQRSTUVWXYZ".indexOf(ref[2]);
-                x += Math.floor(idx / 5) * 2; y += (idx % 5) * 2;
-            } else {
-                const n = ref.length;
-                if (n < 2) return null;
-                x = parseInt(ref.substring(0, n/2)) * Math.pow(10, 5 - n/2);
-                y = parseInt(ref.substring(n/2)) * Math.pow(10, 5 - n/2);
-            }
-
+            const n = ref.length;
+            if (n < 2) return null;
+            x = parseInt(ref.substring(0, n/2)) * Math.pow(10, 5 - n/2);
+            y = parseInt(ref.substring(n/2)) * Math.pow(10, 5 - n/2);
             const [lng, lat] = proj4("EPSG:27700", "EPSG:4326", [300000 + x, 100000 + y]);
             return [lat, lng];
         };
@@ -55,25 +66,15 @@
                 rows.forEach(row => {
                     const match = row.match(/^"?([^*",]+)"?,?("?.*?"?)$/);
                     if (!match) return;
-                    
-                    const grid = match[1];
-                    const coords = stToWgs84(grid);
-
+                    const coords = stToWgs84(match[1]);
                     if (coords) {
                         const marker = L.circleMarker(coords, { radius: 6, fillColor: "#ef4444", color: "#fff" }).addTo(map);
-                        const speciesRaw = match[2].replace(/"/g, '');
-                        const speciesList = speciesRaw.split(',').map(s => {
+                        const speciesList = match[2].replace(/"/g, '').split(',').map(s => {
                             const parts = s.trim().split(' [');
-                            const id = parts[0].trim();
-                            const name = parts[1] ? parts[1].replace(']', '') : id;
-                            return { id, name };
+                            return { id: parts[0].trim(), name: parts[1] ? parts[1].replace(']', '') : parts[0].trim() };
                         });
-
-                        const listHtml = speciesList.map(s => `
-                            <li><a href="https://species.nbnatlas.org/species/${s.id}" target="_blank" class="nbn-link">${s.name}</a></li>
-                        `).join('');
-
-                        marker.bindPopup(`<div class="p-2 max-h-60 overflow-y-auto"><p class="font-bold border-b mb-1">Grid: ${grid}</p><ul class="text-sm list-disc pl-4">${listHtml}</ul></div>`);
+                        const listHtml = speciesList.map(s => `<li><a href="https://species.nbnatlas.org/species/${s.id}" target="_blank" class="nbn-link">${s.name}</a></li>`).join('');
+                        marker.bindPopup(`<div class="p-2 max-h-60 overflow-y-auto"><p class="font-bold border-b mb-1">Grid: ${match[1]}</p><ul class="text-sm list-disc pl-4">${listHtml}</ul></div>`);
                     }
                 });
             });
