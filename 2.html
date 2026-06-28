@@ -24,20 +24,30 @@
             attribution: 'Tiles &copy; Esri'
         }).addTo(map);
 
+        // Robust Grid Parser
         const stToWgs84 = (gridStr) => {
-            const clean = gridStr.replace(/\*/g, '');
-            const nums = clean.replace(/[^\d]/g, '');
-            if (nums.length < 4) return null;
-            // Crude parsing for demo; in production use a proper OS Grid parser
-            const x = parseInt(nums.substring(0, nums.length/2));
-            const y = parseInt(nums.substring(nums.length/2));
-            const easting = 300000 + x * 10;
-            const northing = 100000 + y * 10;
-            const [lng, lat] = proj4("EPSG:27700", "EPSG:4326", [easting, northing]);
+            let ref = gridStr.replace(/[^*A-Z0-9]/g, '');
+            if (!ref.startsWith('ST')) return null;
+            ref = ref.substring(2);
+
+            let x = 0, y = 0;
+            // Handle Tetrads (e.g., ST57X)
+            if (ref.length === 3 && /[A-Z]/.test(ref[2])) {
+                const base = ref.substring(0, 2);
+                x = parseInt(base[0]) * 10; y = parseInt(base[1]) * 10;
+                const idx = "ABCDEFGHIJKLMNPQRSTUVWXYZ".indexOf(ref[2]);
+                x += Math.floor(idx / 5) * 2; y += (idx % 5) * 2;
+            } else {
+                const n = ref.length;
+                if (n < 2) return null;
+                x = parseInt(ref.substring(0, n/2)) * Math.pow(10, 5 - n/2);
+                y = parseInt(ref.substring(n/2)) * Math.pow(10, 5 - n/2);
+            }
+
+            const [lng, lat] = proj4("EPSG:27700", "EPSG:4326", [300000 + x, 100000 + y]);
             return [lat, lng];
         };
 
-        // Fetch and parse the CSV
         fetch('bwspecies.csv')
             .then(res => res.text())
             .then(csv => {
@@ -46,14 +56,12 @@
                     const match = row.match(/^"?([^*",]+)"?,?("?.*?"?)$/);
                     if (!match) return;
                     
-                    const grid = match[1].replace(/\*/g, '');
-                    const speciesRaw = match[2].replace(/"/g, '');
+                    const grid = match[1];
                     const coords = stToWgs84(grid);
 
                     if (coords) {
                         const marker = L.circleMarker(coords, { radius: 6, fillColor: "#ef4444", color: "#fff" }).addTo(map);
-                        
-                        // Parse species list: "ID [Name], ID"
+                        const speciesRaw = match[2].replace(/"/g, '');
                         const speciesList = speciesRaw.split(',').map(s => {
                             const parts = s.trim().split(' [');
                             const id = parts[0].trim();
@@ -65,12 +73,7 @@
                             <li><a href="https://species.nbnatlas.org/species/${s.id}" target="_blank" class="nbn-link">${s.name}</a></li>
                         `).join('');
 
-                        marker.bindPopup(`
-                            <div class="p-2 max-h-60 overflow-y-auto">
-                                <p class="font-bold border-b mb-1">Grid: ${grid}</p>
-                                <ul class="text-sm list-disc pl-4">${listHtml}</ul>
-                            </div>
-                        `);
+                        marker.bindPopup(`<div class="p-2 max-h-60 overflow-y-auto"><p class="font-bold border-b mb-1">Grid: ${grid}</p><ul class="text-sm list-disc pl-4">${listHtml}</ul></div>`);
                     }
                 });
             });
