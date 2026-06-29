@@ -10,8 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         #map { height: 100vh; width: 100%; }
-        .tooltip-link { color: #2563eb; text-decoration: underline; cursor: pointer; position: relative; }
-        .hover-img { display: none; position: absolute; left: 100%; top: 0; z-index: 1000; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); width: 150px; background: white; }
+        .tooltip-link { color: #2563eb; text-decoration: underline; cursor: pointer; position: relative; display: block; margin-bottom: 4px; }
+        .hover-img { display: none; position: fixed; z-index: 2000; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); width: 150px; background: white; pointer-events: none; }
         .tooltip-link:hover .hover-img { display: block; }
     </style>
 </head>
@@ -26,6 +26,15 @@
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri'
         }).addTo(map);
+
+        // Position the hover image near the mouse
+        document.addEventListener('mousemove', (e) => {
+            const imgs = document.querySelectorAll('.hover-img');
+            imgs.forEach(img => {
+                img.style.left = (e.clientX + 15) + 'px';
+                img.style.top = (e.clientY + 15) + 'px';
+            });
+        });
 
         const stToWgs84 = (gridStr) => {
             const nums = gridStr.replace(/[^\d]/g, '');
@@ -63,7 +72,7 @@
                             // NBN Atlas image URL pattern
                             const imgUrl = `https://images.nbnatlas.org/image/proxyImage?imageId=${id}`;
                             
-                            return `<span class="tooltip-link block">
+                            return `<span class="tooltip-link">
                                         <a href="https://species.nbnatlas.org/species/${id}" target="_blank">${name}</a>
                                         <img src="${imgUrl}" class="hover-img" onerror="this.style.display='none'">
                                     </span>`;
