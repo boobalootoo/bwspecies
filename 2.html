@@ -17,6 +17,7 @@
     <div id="map"></div>
 
     <script>
+        // OSGB36 Projection
         proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs");
 
         const map = L.map('map').setView([51.45, -2.5], 11);
@@ -29,23 +30,17 @@
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((pos) => {
                 const { latitude, longitude, heading } = pos.coords;
+                const iconHtml = `<div style="transform: rotate(${heading || 0}deg); font-size: 20px; color: yellow; text-shadow: 0 0 3px black;">➤</div>`;
                 if (!userMarker) {
-                    userMarker = L.marker([latitude, longitude], {
-                        icon: L.divIcon({
-                            html: `<div style="transform: rotate(${heading || 0}deg); font-size: 20px;">➤</div>`,
-                            className: 'user-arrow'
-                        })
-                    }).addTo(map);
+                    userMarker = L.marker([latitude, longitude], { icon: L.divIcon({ html: iconHtml, className: 'user-arrow', iconSize: [20, 20] }) }).addTo(map);
                 } else {
                     userMarker.setLatLng([latitude, longitude]);
-                    userMarker.setIcon(L.divIcon({
-                        html: `<div style="transform: rotate(${heading || 0}deg); font-size: 20px;">➤</div>`,
-                        className: 'user-arrow'
-                    }));
+                    userMarker.setIcon(L.divIcon({ html: iconHtml, className: 'user-arrow', iconSize: [20, 20] }));
                 }
             }, null, { enableHighAccuracy: true });
         }
 
+        // Robust Grid Parser
         const stToWgs84 = (gridStr) => {
             const clean = gridStr.replace(/[^*A-Z0-9]/g, '');
             if (!clean.startsWith('ST')) return null;
@@ -53,12 +48,14 @@
             let x = 0, y = 0;
             const n = ref.length;
             if (n < 2) return null;
+            // Support variable length grid references
             x = parseInt(ref.substring(0, n/2)) * Math.pow(10, 5 - n/2);
             y = parseInt(ref.substring(n/2)) * Math.pow(10, 5 - n/2);
             const [lng, lat] = proj4("EPSG:27700", "EPSG:4326", [300000 + x, 100000 + y]);
             return [lat, lng];
         };
 
+        // Fetch and parse the CSV
         fetch('bwspecies.csv')
             .then(res => res.text())
             .then(csv => {
@@ -66,15 +63,31 @@
                 rows.forEach(row => {
                     const match = row.match(/^"?([^*",]+)"?,?("?.*?"?)$/);
                     if (!match) return;
-                    const coords = stToWgs84(match[1]);
+                    
+                    const grid = match[1];
+                    const coords = stToWgs84(grid);
+                    
                     if (coords) {
                         const marker = L.circleMarker(coords, { radius: 6, fillColor: "#ef4444", color: "#fff" }).addTo(map);
-                        const speciesList = match[2].replace(/"/g, '').split(',').map(s => {
+                        
+                        // Parse species: "ID [Common Name]"
+                        const speciesRaw = match[2].replace(/"/g, '');
+                        const speciesList = speciesRaw.split(',').map(s => {
                             const parts = s.trim().split(' [');
                             return { id: parts[0].trim(), name: parts[1] ? parts[1].replace(']', '') : parts[0].trim() };
                         });
-                        const listHtml = speciesList.map(s => `<li><a href="https://species.nbnatlas.org/species/${s.id}" target="_blank" class="nbn-link">${s.name}</a></li>`).join('');
-                        marker.bindPopup(`<div class="p-2 max-h-60 overflow-y-auto"><p class="font-bold border-b mb-1">Grid: ${match[1]}</p><ul class="text-sm list-disc pl-4">${listHtml}</ul></div>`);
+
+                        const listHtml = speciesList.map(s => `
+                            <li><a href="https://species.nbnatlas.org/species/${s.id}" target="_blank" class="nbn-link">${s.name}</a></li>
+                        `).join('');
+
+                        // Persistent Popup (bindPopup stays open until closed)
+                        marker.bindPopup(`
+                            <div class="p-2 max-h-60 overflow-y-auto">
+                                <p class="font-bold border-b mb-1">Grid: ${grid}</p>
+                                <ul class="text-sm list-disc pl-4">${listHtml}</ul>
+                            </div>
+                        `);
                     }
                 });
             });
