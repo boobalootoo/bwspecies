@@ -68,8 +68,8 @@
                             const id = match[1].trim();
                             const name = match[2] ? match[2].trim() : id;
                             
-                            // Using a more generic image thumbnail endpoint that redirects effectively
-                            const imgUrl = `https://images.nbnatlas.org/image/square?imageId=${id}`;
+                            // Updated image endpoint pattern based on NBN Atlas structure
+                            const imgUrl = `https://records.nbnatlas.org/ws/species/image/${id}`;
                             
                             return `<span class="tooltip-link">
                                         <a href="https://species.nbnatlas.org/species/${id}" target="_blank">${name}</a>
