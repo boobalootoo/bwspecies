@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satellite Species Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map { height: 100vh; width: 100%; }
+        .tooltip-link { color: #2563eb; text-decoration: underline; cursor: pointer; position: relative; display: block; margin-bottom: 4px; }
+        .hover-img { display: none; position: fixed; z-index: 10000 !important; border: 2px solid white; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 200px; height: 150px; background: #eee; pointer-events: none; border-radius: 4px; object-fit: cover; }
+        .tooltip-link:hover .hover-img { display: block; }
+    </style>
+</head>
+<body class="m-0 p-0">
+    <div id="map"></div>
+
+    <script>
+        // OSGB36 Projection
+        proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs");
+
+        const map = L.map('map').setView([51.45, -2.5], 11);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        document.addEventListener('mousemove', (e) => {
+            const imgs = document.querySelectorAll('.hover-img');
+            imgs.forEach(img => {
+                const x = e.clientX + 20;
+                const y = e.clientY + 20;
+                img.style.left = (x > window.innerWidth - 220 ? window.innerWidth - 220 : x) + 'px';
+                img.style.top = (y > window.innerHeight - 170 ? window.innerHeight - 170 : y) + 'px';
+            });
+        });
+
+        const stToWgs84 = (gridStr) => {
+            const nums = gridStr.replace(/[^\d]/g, '');
+            if (nums.length < 4) return null;
+            const x = parseInt(nums.substring(0, nums.length/2));
+            const y = parseInt(nums.substring(nums.length/2));
+            const easting = 300000 + x * 10;
+            const northing = 100000 + y * 10;
+            const [lng, lat] = proj4("EPSG:27700", "EPSG:4326", [easting, northing]);
+            return [lat, lng];
+        };
+
+        fetch('bwspecies.csv')
+            .then(res => res.text())
+            .then(csv => {
+                const rows = csv.split('\n').slice(1);
+                rows.forEach(row => {
+                    const cols = row.split(',');
+                    const grid = cols[0].replace(/[^A-Z0-9]/g, '');
+                    const speciesData = cols[1] ? cols[1].replace(/[`""]/g, '') : '';
+                    
+                    const coords = stToWgs84(grid);
+                    if (coords) {
+                        const marker = L.circleMarker(coords, { radius: 6, fillColor: "#ef4444", color: "#fff" }).addTo(map);
+                        
+                        const speciesLinks = speciesData.split(',').map(s => {
+                            const trimmed = s.trim();
+                            const match = trimmed.match(/^([^\[\s]+)(?:\s*\[(.*)\])?/);
+                            if (!match) return '';
+                            const id = match[1].trim();
+                            const name = match[2] ? match[2].trim() : id;
+                            
+                            // Using a more generic image thumbnail endpoint that redirects effectively
+                            const imgUrl = `https://images.nbnatlas.org/image/square?imageId=${id}`;
+                            
+                            return `<span class="tooltip-link">
+                                        <a href="https://species.nbnatlas.org/species/${id}" target="_blank">${name}</a>
+                                        <img src="${imgUrl}" class="hover-img" onerror="this.src='https://www.nbnatlas.org/wp-content/themes/nbn/images/favicon.ico'">
+                                    </span>`;
+                        }).filter(link => link !== '').join('');
+
+                        marker.bindPopup(`<div class="p-2"><p class="font-bold border-b mb-1">Grid: ${grid}</p>${speciesLinks || '<p class="text-gray-500">No species data</p>'}</div>`);
+                    }
+                });
+            });
+    </script>
+</body>
+</html>
